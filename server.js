@@ -4,31 +4,31 @@ const WebSocket = require('ws');
 const path = require('path');
 const EventHubReader = require('./scripts/event-hub-reader.js');
 
-const iotHubConnectionString = process.env.IotHubConnectionString;
-if (!iotHubConnectionString) {
-  console.error(`Environment variable IotHubConnectionString must be specified.`);
-  return;
-}
-console.log(`Using IoT Hub connection string [${iotHubConnectionString}]`);
+// Configuración de las variables de entorno
+const iotHubConnectionString = process.env.IotHubConnectionString || 'HostName=WilmerValeria.azure-devices.net;SharedAccessKeyName=service;SharedAccessKey=8Ll3qNz0m2W7YUbGilYRIUdfeWYXaCV8lAIoTAfZ5M8=';
+const eventHubConsumerGroup = process.env.EventHubConsumerGroup || 'GRUPO_CONSUMO_WEB_WV';
 
-const eventHubConsumerGroup = process.env.EventHubConsumerGroup;
-console.log(eventHubConsumerGroup);
-if (!eventHubConsumerGroup) {
-  console.error(`Environment variable EventHubConsumerGroup must be specified.`);
-  return;
-}
+console.log(`Using IoT Hub connection string [${iotHubConnectionString}]`);
 console.log(`Using event hub consumer group [${eventHubConsumerGroup}]`);
 
-// Redirect requests to the public subdirectory to the root
+// Configuración de la aplicación Express
 const app = express();
+
+// Middleware para servir archivos estáticos desde la carpeta 'public'
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Middleware para redirigir todas las solicitudes a la raíz '/'
 app.use((req, res /* , next */) => {
   res.redirect('/');
 });
 
+// Creación del servidor HTTP
 const server = http.createServer(app);
+
+// Configuración del WebSocket
 const wss = new WebSocket.Server({ server });
 
+// Función para broadcast de mensajes a todos los clientes conectados
 wss.broadcast = (data) => {
   wss.clients.forEach((client) => {
     if (client.readyState === WebSocket.OPEN) {
@@ -42,10 +42,12 @@ wss.broadcast = (data) => {
   });
 };
 
+// Iniciar el servidor en el puerto especificado por la variable de entorno PORT, o el puerto 3000 por defecto
 server.listen(process.env.PORT || '3000', () => {
   console.log('Listening on %d.', server.address().port);
 });
 
+// Iniciar la lectura de mensajes desde el Event Hub
 const eventHubReader = new EventHubReader(iotHubConnectionString, eventHubConsumerGroup);
 
 (async () => {
@@ -53,13 +55,14 @@ const eventHubReader = new EventHubReader(iotHubConnectionString, eventHubConsum
     try {
       const payload = {
         IotData: message,
-        MessageDate: date || Date.now().toISOString(),
+        MessageDate: date || new Date().toISOString(),
         DeviceId: deviceId,
       };
 
+      // Transmitir el payload a todos los clientes WebSocket conectados
       wss.broadcast(JSON.stringify(payload));
     } catch (err) {
       console.error('Error broadcasting: [%s] from [%s].', err, message);
     }
   });
-})().catch();
+})().catch(console.error);
